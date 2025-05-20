@@ -1,0 +1,32 @@
+{
+  "name": "smile_api",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "nodemon server.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Dumgrammer/Smile_api.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/Dumgrammer/Smile_api/issues"
+  },
+  "homepage": "https://github.com/Dumgrammer/Smile_api#readme",
+  "dependencies": {
+    "argon2": "^0.43.0",
+    "dotenv": "^16.5.0",
+    "express": "^5.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^8.3.4",
+    "morgan": "^1.10.0",
+    "multer": "^1.4.5-lts.2",
+    "nodemon": "^3.1.10"
+  }
+}
