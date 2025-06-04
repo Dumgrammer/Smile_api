@@ -14,6 +14,9 @@ router.get('/archived', appointmentController.getArchivedAppointments);
 // Get available time slots for a specific date
 router.get('/slots/:date', appointmentController.getAvailableSlots);
 
+// Reschedule appointment
+router.put('/:id/reschedule', appointmentController.rescheduleAppointment);
+
 // Get appointment by ID
 router.get('/:id', appointmentController.getAppointmentById);
 

@@ -59,18 +59,15 @@ appointmentSchema.index({ date: 1, startTime: 1, endTime: 1 });
 
 // Static method to check slot availability
 appointmentSchema.statics.isSlotAvailable = async function(date, startTime, endTime) {
-  const startDateTime = new Date(`${date}T${startTime}`);
-  const endDateTime = new Date(`${date}T${endTime}`);
-  
   // Check if the time slot is valid (end time should be after start time)
-  if (endDateTime <= startDateTime) {
+  if (endTime <= startTime) {
     return false;
   }
 
-  // Check if the appointment is within business hours (8 AM to 5 PM)
+  // Check if the appointment is within business hours (9 AM to 7 PM)
   const startHour = parseInt(startTime.split(':')[0]);
   const endHour = parseInt(endTime.split(':')[0]);
-  if (startHour < 8 || endHour > 17) {
+  if (startHour < 9 || endHour > 19) {
     return false;
   }
 
@@ -90,12 +87,6 @@ appointmentSchema.statics.isSlotAvailable = async function(date, startTime, endT
         $and: [
           { startTime: { $lt: endTime } },
           { endTime: { $gte: endTime } }
-        ]
-      },
-      {
-        $and: [
-          { startTime: { $gte: startTime } },
-          { endTime: { $lte: endTime } }
         ]
       }
     ]
