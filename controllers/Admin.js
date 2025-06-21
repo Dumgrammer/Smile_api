@@ -2,6 +2,7 @@ const Admin = require('../models/Admin');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const { generateTokens, setRefreshTokenCookie, clearRefreshTokenCookie } = require('../utils/tokenUtils');
+const { encrypt, decrypt } = require('../utils/crypto');
 
 /**
  * @desc    Register a new admin
@@ -88,7 +89,16 @@ exports.registerAdmin = async (req, res) => {
  */
 exports.loginAdmin = async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { payload } = req.body;
+
+    if (!payload) {
+      return res.status(400).json({
+        success: false,
+        message: 'Encrypted payload is required.'
+      });
+    }
+
+    const { email, password } = decrypt(payload);
 
     // Validate email and password
     if (!email || !password) {

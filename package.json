@@ -21,6 +21,8 @@
   "homepage": "https://github.com/Dumgrammer/Smile_api#readme",
   "dependencies": {
     "argon2": "^0.43.0",
+    "buffer": "^6.0.3",
+    "crypto-browserify": "^3.12.1",
     "dotenv": "^16.5.0",
     "express": "^5.1.0",
     "jsonwebtoken": "^9.0.2",
