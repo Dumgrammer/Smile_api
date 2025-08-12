@@ -1,24 +1,25 @@
 const Notes = require('../models/Notes');
 const Appointment = require('../models/Appointment');
+const { encrypt, decrypt } = require('../utils/crypto');
 
 // Create notes for an appointment
 exports.createNotes = async (req, res) => {
   try {
-    const { appointmentId, patientId, treatmentNotes, reminderNotes, payment } = req.body;
+    console.log('Creating notes - Request body:', req.body);
+    const decryptedData = decrypt(req.body.data);
+    console.log('Decrypted data:', decryptedData);
+    const { appointmentId, patientId, treatmentNotes, reminderNotes, payment } = decryptedData;
 
-    // Validate appointment exists and is completed
+    // Validate appointment exists
     const appointment = await Appointment.findById(appointmentId);
     if (!appointment) {
       return res.status(404).json({ message: 'Appointment not found' });
     }
-    if (appointment.status !== 'Finished') {
-      return res.status(400).json({ message: 'Cannot add notes to an incomplete appointment' });
+    // Allow notes for appointments that are not cancelled or pending
+    if (appointment.status === 'Cancelled' || appointment.status === 'Pending') {
+      return res.status(400).json({ message: 'Cannot add notes to a cancelled or pending appointment' });
     }
 
-    // Validate payment amount
-    if (!payment || typeof payment.amount !== 'number' || payment.amount < 0) {
-      return res.status(400).json({ message: 'Invalid payment amount' });
-    }
 
     const notes = new Notes({
       appointment: appointmentId,
@@ -26,14 +27,14 @@ exports.createNotes = async (req, res) => {
       treatmentNotes,
       reminderNotes,
       payment: {
-        amount: payment.amount,
         status: payment.status
       },
       createdBy: req.admin._id
     });
 
     await notes.save();
-    res.status(201).json(notes);
+    console.log('Notes saved successfully:', notes);
+    res.status(201).json({ data: encrypt(notes) });
   } catch (error) {
     console.error('Error creating notes:', error);
     res.status(500).json({ message: error.message });
@@ -51,7 +52,7 @@ exports.getNotesByAppointment = async (req, res) => {
       return res.status(404).json({ message: 'Notes not found' });
     }
 
-    res.json(notes);
+    res.json({ data: encrypt(notes) });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -60,7 +61,8 @@ exports.getNotesByAppointment = async (req, res) => {
 // Update notes
 exports.updateNotes = async (req, res) => {
   try {
-    const { treatmentNotes, payment } = req.body;
+    const decryptedData = decrypt(req.body.data);
+    const { treatmentNotes, payment } = decryptedData;
     const notes = await Notes.findOne({ appointment: req.params.appointmentId });
 
     if (!notes) {
@@ -71,7 +73,7 @@ exports.updateNotes = async (req, res) => {
     if (payment) notes.payment = payment;
 
     await notes.save();
-    res.json(notes);
+    res.json({ data: encrypt(notes) });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -85,7 +87,7 @@ exports.getPatientNotes = async (req, res) => {
       .populate('createdBy', 'firstName lastName')
       .sort({ createdAt: -1 });
 
-    res.json(notes);
+    res.json({ data: encrypt(notes) });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

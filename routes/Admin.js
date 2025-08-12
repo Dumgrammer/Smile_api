@@ -23,7 +23,7 @@ router.post('/register', [protect, authorize('superadmin'), apiLimiter], adminCo
 
 // Dashboard stats route
 router.get('/dashboard/stats', DashboardController.getStats);
-// Dashboard revenue trend route
-router.get('/dashboard/revenue-trend', DashboardController.getRevenueTrend);
+// Dashboard activity trend route
+router.get('/dashboard/activity-trend', DashboardController.getActivityTrend);
 
 module.exports = router;

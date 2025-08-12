@@ -34,12 +34,15 @@ const adminRoutes = require('./routes/Admin');
 const patientRoutes = require('./routes/Patient');
 const appointmentRoutes = require('./routes/Appointment');
 const notesRoutes = require('./routes/Notes');
+const inquiryRoutes = require('./routes/Inquiry');
+const logRoutes = require('./routes/Logs');
 
 app.use('/api/v1/admin', adminRoutes);
 app.use('/api/v1/patients', patientRoutes);
 app.use('/api/v1/appointments', appointmentRoutes);
 app.use('/api/v1/notes', notesRoutes);
-
+app.use('/api/v1/inquiry', inquiryRoutes);
+app.use('/api/v1/logs', logRoutes);
 
 app.use((req, res, next) => {
     const error = new Error('Not Found');

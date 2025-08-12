@@ -1,32 +1,36 @@
 const express = require('express');
 const router = express.Router();
 const appointmentController = require('../controllers/Appointment');
+const { protect } = require('../middleware/auth');
 
-// Create a new appointment
-router.post('/', appointmentController.createAppointment);
+// Create a new appointment (protected - for admin use)
+router.post('/', protect, appointmentController.createAppointment);
+
+// Create a new appointment (public - for online booking with Pending status)
+router.post('/public', appointmentController.createPublicAppointment);
 
 // Get all appointments (with optional date and status filters)
-router.get('/', appointmentController.getAppointments);
+router.get('/', protect, appointmentController.getAppointments);
 
-// Get archived appointments (must come before /:id route)
-router.get('/archived', appointmentController.getArchivedAppointments);
+// Get archived appointments (must come before /:id route)m
+router.get('/archived', protect, appointmentController.getArchivedAppointments);
 
 // Get available time slots for a specific date
 router.get('/slots/:date', appointmentController.getAvailableSlots);
 
 // Reschedule appointment
-router.put('/:id/reschedule', appointmentController.rescheduleAppointment);
+router.put('/:id/reschedule', protect, appointmentController.rescheduleAppointment);
 
 // Get appointment by ID
-router.get('/:id', appointmentController.getAppointmentById);
+router.get('/:id', protect, appointmentController.getAppointmentById);
 
 // Update appointment
-router.put('/:id', appointmentController.updateAppointment);
+router.put('/:id', protect, appointmentController.updateAppointment);
 
 // Delete (cancel) appointment
-router.delete('/:id', appointmentController.deleteAppointment);
+router.delete('/:id', protect, appointmentController.deleteAppointment);
 
 // Get appointments for a specific patient
-router.get('/patient/:patientId', appointmentController.getPatientAppointments);
+router.get('/patient/:patientId', protect, appointmentController.getPatientAppointments);
 
 module.exports = router;

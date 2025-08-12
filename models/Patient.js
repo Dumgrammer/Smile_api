@@ -37,7 +37,11 @@ const caseSchema = new mongoose.Schema({
             type: mongoose.Schema.Types.ObjectId,
             ref: 'Admin'
         }
-    }]
+    }],
+    verificationCode: {
+        type: String,
+        required: false
+    }
 }, { timestamps: true });
 
 // Main Patient schema

@@ -23,8 +23,9 @@ const notesSchema = new mongoose.Schema({
   payment: {
     amount: {
       type: Number,
-      required: true,
-      min: 0
+      required: false,
+      min: 0,
+      default: 0
     },
     status: {
       type: String,

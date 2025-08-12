@@ -10,10 +10,20 @@ router.use(apiLimiter);
 // Patient CRUD routes
 router.post('/', protect, PatientController.createPatient);
 router.get('/', protect, PatientController.getAllPatients);
+router.post('/search', PatientController.searchPatients); // Public access for appointment booking
+router.post('/verify', PatientController.verifyCode); // Public access for code verification
+
+// Archive/Restore routes (MUST come before parameterized routes)
+router.patch('/archive-multiple', protect, PatientController.archiveMultiplePatients);
+router.patch('/restore-multiple', protect, PatientController.restoreMultiplePatients);
+
+// Parameterized routes (MUST come after specific routes)
 router.get('/:patientId', protect, PatientController.getPatientById);
 router.patch('/:patientId', protect, PatientController.updatePatient);
 router.delete('/:patientId', protect, PatientController.deletePatient);
 router.delete('/:patientId/permanent', protect, PatientController.hardDeletePatient);
+router.patch('/:patientId/archive', protect, PatientController.archivePatient);
+router.patch('/:patientId/restore', protect, PatientController.restorePatient);
 
 // Case management routes
 router.post('/:patientId/cases', protect, PatientController.addCase);
