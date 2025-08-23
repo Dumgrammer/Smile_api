@@ -482,6 +482,216 @@ exports.createPublicAppointment = async (req, res) => {
   }
 };
 
+// Helper function to check and mark missed appointments
+const checkAndMarkMissedAppointments = async () => {
+  try {
+    const currentDate = new Date();
+    const currentTime = currentDate.toTimeString().slice(0, 5); // Get current time in HH:mm format
+    
+    // Find appointments that are in the past and still have active status
+    const missedAppointments = await Appointment.find({
+      $or: [
+        // Appointments from past dates
+        {
+          date: { $lt: currentDate.toISOString().split('T')[0] },
+          status: { $in: ['Scheduled', 'Pending', 'Rescheduled'] }
+        },
+        // Appointments from today but time has passed
+        {
+          date: currentDate.toISOString().split('T')[0],
+          endTime: { $lt: currentTime },
+          status: { $in: ['Scheduled', 'Pending', 'Rescheduled'] }
+        }
+      ]
+    }).populate('patient', 'firstName lastName middleName email');
+
+    if (missedAppointments.length > 0) {
+      // Update all missed appointments to cancelled status
+      const updatePromises = missedAppointments.map(async (appointment) => {
+        appointment.status = 'Cancelled';
+        await appointment.save();
+
+        // Log the automatic cancellation
+        try {
+          await logAction(
+            null, // No admin for automatic cancellations
+            'System', 
+            'APPOINTMENT_AUTO_CANCELLED', 
+            'appointment', 
+            appointment._id, 
+            `${appointment.patient.firstName} ${appointment.patient.lastName}`, 
+            `Automatically cancelled missed appointment: ${appointment.title} for ${appointment.patient.firstName} ${appointment.patient.lastName}`, 
+            { 
+              appointmentId: appointment._id, 
+              patientId: appointment.patient._id, 
+              patientName: `${appointment.patient.firstName} ${appointment.patient.lastName}`,
+              patientEmail: appointment.patient.email,
+              appointmentTitle: appointment.title,
+              appointmentDate: appointment.date,
+              appointmentTime: `${appointment.startTime}-${appointment.endTime}`,
+              previousStatus: 'Active',
+              newStatus: 'Cancelled',
+              reason: 'Missed appointment - automatically cancelled by system'
+            }
+          );
+        } catch (logError) {
+          console.error('Error creating log for auto-cancellation:', logError);
+        }
+
+        // Send email notification about the cancellation
+        try {
+          const mailOptions = {
+            from: `"MA Florencio Dental Clinic" <${process.env.APP_EMAIL}>`,
+            to: appointment.patient.email,
+            subject: 'Missed Appointment - MA Florencio Dental Clinic',
+            html: `
+              <!DOCTYPE html>
+              <html>
+              <head>
+                <style>
+                  body {
+                    font-family: Arial, sans-serif;
+                    line-height: 1.6;
+                    color: #333;
+                    margin: 0;
+                    padding: 0;
+                  }
+                  .container {
+                    max-width: 600px;
+                    margin: 0 auto;
+                    padding: 20px;
+                  }
+                  .header {
+                    background: linear-gradient(to right, #dc2626, #b91c1c);
+                    color: white;
+                    padding: 30px;
+                    text-align: center;
+                    border-radius: 10px 10px 0 0;
+                  }
+                  .content {
+                    background: white;
+                    padding: 30px;
+                    border: 1px solid #e5e7eb;
+                    border-radius: 0 0 10px 10px;
+                  }
+                  .appointment-details {
+                    background: #fef2f2;
+                    padding: 20px;
+                    border-radius: 8px;
+                    margin: 20px 0;
+                    border-left: 4px solid #dc2626;
+                  }
+                  .detail-item {
+                    margin: 10px 0;
+                    display: flex;
+                    align-items: center;
+                  }
+                  .detail-item strong {
+                    width: 120px;
+                    color: #4b5563;
+                  }
+                  .reminder {
+                    background: #f3f4f6;
+                    padding: 15px;
+                    border-radius: 8px;
+                    margin: 20px 0;
+                    border-left: 4px solid #7c3aed;
+                  }
+                  .footer {
+                    text-align: center;
+                    margin-top: 30px;
+                    padding-top: 20px;
+                    border-top: 1px solid #e5e7eb;
+                    color: #6b7280;
+                  }
+                  .button {
+                    display: inline-block;
+                    background: #7c3aed;
+                    color: white;
+                    padding: 12px 24px;
+                    text-decoration: none;
+                    border-radius: 6px;
+                    margin: 20px 0;
+                  }
+                  .logo {
+                    font-size: 24px;
+                    font-weight: bold;
+                    margin-bottom: 10px;
+                  }
+                </style>
+              </head>
+              <body>
+                <div class="container">
+                  <div class="header">
+                    <div class="logo">MA Florencio Dental Clinic</div>
+                    <h1>Missed Appointment Notice</h1>
+                  </div>
+                  <div class="content">
+                    <p>Dear ${appointment.patient.firstName} ${appointment.patient.lastName},</p>
+                    <p>We noticed that you missed your scheduled dental appointment. Your appointment has been automatically cancelled.</p>
+                    
+                    <div class="appointment-details">
+                      <h2 style="color: #dc2626; margin-top: 0;">Missed Appointment Details</h2>
+                      <div class="detail-item">
+                        <strong>Date:</strong>
+                        <span>${new Date(appointment.date).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span>
+                      </div>
+                      <div class="detail-item">
+                        <strong>Time:</strong>
+                        <span>${appointment.startTime} - ${appointment.endTime}</span>
+                      </div>
+                      <div class="detail-item">
+                        <strong>Purpose:</strong>
+                        <span>${appointment.title}</span>
+                      </div>
+                    </div>
+
+                    <div class="reminder">
+                      <h3 style="color: #7c3aed; margin-top: 0;">Reschedule Your Appointment</h3>
+                      <p>We understand that sometimes appointments need to be rescheduled. Please contact us to book a new appointment at your convenience.</p>
+                      <ul style="margin: 0; padding-left: 20px;">
+                        <li>Call us at (123) 456-7890</li>
+                        <li>Visit our website to book online</li>
+                        <li>Email us for assistance</li>
+                      </ul>
+                    </div>
+
+                    <div style="text-align: center;">
+                      <a href="tel:+1234567890" class="button">Call to Reschedule</a>
+                    </div>
+
+                    <div class="footer">
+                      <p>Best regards,<br>MA Florencio Dental Clinic Team</p>
+                      <p style="font-size: 12px;">
+                        This is an automated message, please do not reply directly to this email.<br>
+                        For any questions, please call us at (123) 456-7890
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </body>
+              </html>
+            `
+          };
+
+          await transporter.sendMail(mailOptions);
+          console.log('Missed appointment email sent successfully');
+        } catch (emailError) {
+          console.error('Failed to send missed appointment email:', emailError);
+        }
+      });
+
+      await Promise.all(updatePromises);
+      console.log(`Automatically cancelled ${missedAppointments.length} missed appointments`);
+    }
+
+    return missedAppointments.length;
+  } catch (error) {
+    console.error('Error checking missed appointments:', error);
+    return 0;
+  }
+};
+
 // Get all appointments
 exports.getAppointments = async (req, res) => {
   try {
@@ -495,11 +705,17 @@ exports.getAppointments = async (req, res) => {
       query.status = status;
     }
 
+    // Check for missed appointments before getting the list
+    const missedCount = await checkAndMarkMissedAppointments();
+
     const appointments = await Appointment.find(query)
       .populate('patient', 'firstName lastName middleName')
       .sort({ date: 1, startTime: 1 });
 
-    res.json({ data: encrypt(appointments) });
+    res.json({ 
+      data: encrypt(appointments),
+      missedAppointmentsCancelled: missedCount
+    });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -1498,5 +1714,286 @@ exports.rescheduleAppointment = async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ message: error.message });
+  }
+};
+
+
+// Get missed appointments
+exports.getMissedAppointments = async (req, res) => {
+  try {
+    const currentDate = new Date();
+    const currentTime = currentDate.toTimeString().slice(0, 5); // Get current time in HH:mm format
+    
+    // Find appointments that are in the past and still have active status
+    const missedAppointments = await Appointment.find({
+      $or: [
+        // Appointments from past dates
+        {
+          date: { $lt: currentDate.toISOString().split('T')[0] },
+          status: { $in: ['Scheduled', 'Pending', 'Rescheduled'] }
+        },
+        // Appointments from today but time has passed
+        {
+          date: currentDate.toISOString().split('T')[0],
+          endTime: { $lt: currentTime },
+          status: { $in: ['Scheduled', 'Pending', 'Rescheduled'] }
+        }
+      ]
+    }).populate('patient', 'firstName lastName middleName email phone');
+
+    // Format the response data
+    const formattedMissedAppointments = missedAppointments.map(appointment => ({
+      id: appointment._id,
+      patientName: `${appointment.patient.firstName} ${appointment.patient.lastName}`,
+      appointmentTime: appointment.date.toISOString().split('T')[0] + ' ' + appointment.startTime,
+      service: appointment.title,
+      status: appointment.status,
+      phone: appointment.patient.phone || 'N/A',
+      email: appointment.patient.email || 'N/A',
+      date: appointment.date,
+      startTime: appointment.startTime,
+      endTime: appointment.endTime,
+      patientId: appointment.patient._id
+    }));
+
+    res.json({ 
+      data: encrypt(formattedMissedAppointments),
+      count: formattedMissedAppointments.length
+    });
+  } catch (error) {
+    console.error('Error getting missed appointments:', error);
+    res.status(500).json({ message: 'Failed to get missed appointments', error: error.message });
+  }
+};
+
+// Update missed appointments (mark them as cancelled)
+exports.updateMissedAppointments = async (req, res) => {
+  try {
+    const currentDate = new Date();
+    const currentTime = currentDate.toTimeString().slice(0, 5); // Get current time in HH:mm format
+    
+    // Find appointments that are in the past and still have active status
+    const missedAppointments = await Appointment.find({
+      $or: [
+        // Appointments from past dates
+        {
+          date: { $lt: currentDate.toISOString().split('T')[0] },
+          status: { $in: ['Scheduled', 'Pending', 'Rescheduled'] }
+        },
+        // Appointments from today but time has passed
+        {
+          date: currentDate.toISOString().split('T')[0],
+          endTime: { $lt: currentTime },
+          status: { $in: ['Scheduled', 'Pending', 'Rescheduled'] }
+        }
+      ]
+    }).populate('patient', 'firstName lastName middleName email');
+
+    if (missedAppointments.length === 0) {
+      return res.json({ 
+        data: encrypt({ message: 'No missed appointments found' }),
+        count: 0
+      });
+    }
+
+    // Update all missed appointments to cancelled status
+    const updatePromises = missedAppointments.map(async (appointment) => {
+      appointment.status = 'Cancelled';
+      await appointment.save();
+
+      // Log the automatic cancellation
+      try {
+        await logAction(
+          req.admin._id, 
+          `${req.admin.firstName} ${req.admin.lastName}`, 
+          'APPOINTMENT_AUTO_CANCELLED', 
+          'appointment', 
+          appointment._id, 
+          `${appointment.patient.firstName} ${appointment.patient.lastName}`, 
+          `Automatically cancelled missed appointment: ${appointment.title} for ${appointment.patient.firstName} ${appointment.patient.lastName}`, 
+          { 
+            appointmentId: appointment._id, 
+            patientId: appointment.patient._id, 
+            patientName: `${appointment.patient.firstName} ${appointment.patient.lastName}`,
+            patientEmail: appointment.patient.email,
+            appointmentTitle: appointment.title,
+            appointmentDate: appointment.date,
+            appointmentTime: `${appointment.startTime}-${appointment.endTime}`,
+            previousStatus: 'Active',
+            newStatus: 'Cancelled',
+            reason: 'Missed appointment - automatically cancelled'
+          }
+        );
+      } catch (logError) {
+        console.error('Error creating log for auto-cancellation:', logError);
+        // Don't fail the update if logging fails
+      }
+
+      // Send email notification about the cancellation
+      try {
+        const mailOptions = {
+          from: `"MA Florencio Dental Clinic" <${process.env.APP_EMAIL}>`,
+          to: appointment.patient.email,
+          subject: 'Missed Appointment - MA Florencio Dental Clinic',
+          html: `
+            <!DOCTYPE html>
+            <html>
+            <head>
+              <style>
+                body {
+                  font-family: Arial, sans-serif;
+                  line-height: 1.6;
+                  color: #333;
+                  margin: 0;
+                  padding: 0;
+                }
+                .container {
+                  max-width: 600px;
+                  margin: 0 auto;
+                  padding: 20px;
+                }
+                .header {
+                  background: linear-gradient(to right, #dc2626, #b91c1c);
+                  color: white;
+                  padding: 30px;
+                  text-align: center;
+                  border-radius: 10px 10px 0 0;
+                }
+                .content {
+                  background: white;
+                  padding: 30px;
+                  border: 1px solid #e5e7eb;
+                  border-radius: 0 0 10px 10px;
+                }
+                .appointment-details {
+                  background: #fef2f2;
+                  padding: 20px;
+                  border-radius: 8px;
+                  margin: 20px 0;
+                  border-left: 4px solid #dc2626;
+                }
+                .detail-item {
+                  margin: 10px 0;
+                  display: flex;
+                  align-items: center;
+                }
+                .detail-item strong {
+                  width: 120px;
+                  color: #4b5563;
+                }
+                .reminder {
+                  background: #f3f4f6;
+                  padding: 15px;
+                  border-radius: 8px;
+                  margin: 20px 0;
+                  border-left: 4px solid #7c3aed;
+                }
+                .footer {
+                  text-align: center;
+                  margin-top: 30px;
+                  padding-top: 20px;
+                  border-top: 1px solid #e5e7eb;
+                  color: #6b7280;
+                }
+                .button {
+                  display: inline-block;
+                  background: #7c3aed;
+                  color: white;
+                  padding: 12px 24px;
+                  text-decoration: none;
+                  border-radius: 6px;
+                  margin: 20px 0;
+                }
+                .logo {
+                  font-size: 24px;
+                  font-weight: bold;
+                  margin-bottom: 10px;
+                }
+              </style>
+            </head>
+            <body>
+              <div class="container">
+                <div class="header">
+                  <div class="logo">MA Florencio Dental Clinic</div>
+                  <h1>Missed Appointment Notice</h1>
+                </div>
+                <div class="content">
+                  <p>Dear ${appointment.patient.firstName} ${appointment.patient.lastName},</p>
+                  <p>We noticed that you missed your scheduled dental appointment. Your appointment has been automatically cancelled.</p>
+                  
+                  <div class="appointment-details">
+                    <h2 style="color: #dc2626; margin-top: 0;">Missed Appointment Details</h2>
+                    <div class="detail-item">
+                      <strong>Date:</strong>
+                      <span>${new Date(appointment.date).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span>
+                    </div>
+                    <div class="detail-item">
+                      <strong>Time:</strong>
+                      <span>${appointment.startTime} - ${appointment.endTime}</span>
+                    </div>
+                    <div class="detail-item">
+                      <strong>Purpose:</strong>
+                      <span>${appointment.title}</span>
+                    </div>
+                  </div>
+
+                  <div class="reminder">
+                    <h3 style="color: #7c3aed; margin-top: 0;">Reschedule Your Appointment</h3>
+                    <p>We understand that sometimes appointments need to be rescheduled. Please contact us to book a new appointment at your convenience.</p>
+                    <ul style="margin: 0; padding-left: 20px;">
+                      <li>Call us at (123) 456-7890</li>
+                      <li>Visit our website to book online</li>
+                      <li>Email us for assistance</li>
+                    </ul>
+                  </div>
+
+                  <div style="text-align: center;">
+                    <a href="tel:+1234567890" class="button">Call to Reschedule</a>
+                  </div>
+
+                  <div class="footer">
+                    <p>Best regards,<br>MA Florencio Dental Clinic Team</p>
+                    <p style="font-size: 12px;">
+                      This is an automated message, please do not reply directly to this email.<br>
+                      For any questions, please call us at (123) 456-7890
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </body>
+            </html>
+          `
+        };
+
+        await transporter.sendMail(mailOptions);
+        console.log('Missed appointment email sent successfully');
+      } catch (emailError) {
+        console.error('Failed to send missed appointment email:', emailError);
+        // Don't fail the update if email fails
+      }
+
+      return {
+        id: appointment._id,
+        patientName: `${appointment.patient.firstName} ${appointment.patient.lastName}`,
+        appointmentTime: appointment.date.toISOString().split('T')[0] + ' ' + appointment.startTime,
+        service: appointment.title,
+        status: appointment.status,
+        phone: appointment.patient.phone || 'N/A',
+        email: appointment.patient.email || 'N/A'
+      };
+    });
+
+    const updatedAppointments = await Promise.all(updatePromises);
+
+    res.json({ 
+      data: encrypt({
+        message: `Successfully cancelled ${updatedAppointments.length} missed appointments`,
+        appointments: updatedAppointments
+      }),
+      count: updatedAppointments.length
+    });
+  } catch (error) {
+    console.error('Error updating missed appointments:', error);
+    res.status(500).json({ message: 'Failed to update missed appointments', error: error.message });
   }
 };

@@ -12,8 +12,14 @@ router.post('/public', appointmentController.createPublicAppointment);
 // Get all appointments (with optional date and status filters)
 router.get('/', protect, appointmentController.getAppointments);
 
-// Get archived appointments (must come before /:id route)m
+// Get archived appointments (must come before /:id route)
 router.get('/archived', protect, appointmentController.getArchivedAppointments);
+
+// Get missed appointments
+router.get('/missed', protect, appointmentController.getMissedAppointments);
+
+// Update missed appointments (mark as cancelled)
+router.put('/missed/update', protect, appointmentController.updateMissedAppointments);
 
 // Get available time slots for a specific date
 router.get('/slots/:date', appointmentController.getAvailableSlots);
