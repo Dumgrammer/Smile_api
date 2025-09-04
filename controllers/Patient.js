@@ -346,6 +346,14 @@ exports.searchPatients = async (req, res) => {
             filters = {}
         } = decryptedData;
 
+        console.log('Search patients called with:', {
+            search,
+            page,
+            limit,
+            filters,
+            decryptedData
+        });
+
         const skip = (page - 1) * limit;
 
         let query = {};
@@ -393,6 +401,14 @@ exports.searchPatients = async (req, res) => {
             .sort({ createdAt: -1 });
 
         // If this is a single patient search (likely for appointment booking), send verification code
+        console.log('Checking verification email conditions:', {
+            hasSearch: !!search,
+            searchValue: search,
+            patientsLength: patients.length,
+            firstPatientEmail: patients[0] ? patients[0].email : 'NO_PATIENT_FOUND',
+            condition: search && patients.length === 1 && patients[0].email
+        });
+        
         if (search && patients.length === 1 && patients[0].email) {
             const patient = patients[0].toObject();
             const verificationCode = generateVerificationCode();
