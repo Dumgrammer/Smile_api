@@ -406,12 +406,27 @@ exports.searchPatients = async (req, res) => {
             searchValue: search,
             patientsLength: patients.length,
             firstPatientEmail: patients[0] ? patients[0].email : 'NO_PATIENT_FOUND',
-            condition: search && patients.length === 1 && patients[0].email
+            condition: search && patients.length >= 1 && patients[0].email
         });
         
-        if (search && patients.length === 1 && patients[0].email) {
-            const patient = patients[0].toObject();
+        // Handle verification email for patient search (including duplicates)
+        if (search && patients.length >= 1 && patients[0].email) {
+            // If multiple patients with same email, use the most recent active one
+            let selectedPatient = patients[0];
+            if (patients.length > 1) {
+                console.log('Multiple patients found with email:', search);
+                console.log('Selecting most recent active patient');
+                selectedPatient = patients.find(p => p.isActive) || patients[0];
+            }
+            const patient = selectedPatient.toObject();
             const verificationCode = generateVerificationCode();
+            
+            console.log('Selected patient for verification:', {
+                patientId: patient._id,
+                email: patient.email,
+                name: `${patient.firstName} ${patient.lastName}`,
+                isActive: patient.isActive
+            });
             
             // Store the verification code with patient ID and expiration (10 minutes)
             verificationCodes.set(patient._id.toString(), {
