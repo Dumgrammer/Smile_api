@@ -26,6 +26,16 @@ const generateVerificationCode = () => {
 
 // Send verification code email
 const sendVerificationEmail = async (patient, verificationCode) => {
+  // Validate required patient data
+  if (!patient || !patient.email || !patient.firstName || !patient.lastName) {
+    console.error('Invalid patient data for verification email:', {
+      hasPatient: !!patient,
+      hasEmail: !!(patient && patient.email),
+      hasFirstName: !!(patient && patient.firstName),
+      hasLastName: !!(patient && patient.lastName)
+    });
+    return false;
+  }
   const emailStyles = `
     <style>
       body {
@@ -139,10 +149,10 @@ const sendVerificationEmail = async (patient, verificationCode) => {
               <strong>Email:</strong>
               <span>${patient.email}</span>
             </div>
-            <div class="detail-item">
+            ${patient.contactNumber ? `<div class="detail-item">
               <strong>Contact:</strong>
               <span>${patient.contactNumber}</span>
-            </div>
+            </div>` : ''}
 
             <p>If you did not request this verification code, please ignore this email.</p>
             
@@ -157,10 +167,16 @@ const sendVerificationEmail = async (patient, verificationCode) => {
   };
 
   try {
-    await transporter.sendMail(mailOptions);
+    // Verify transporter configuration before sending
+    await transporter.verify();
+    console.log('Transporter verified successfully for verification email');
+    
+    const info = await transporter.sendMail(mailOptions);
+    console.log('Verification email sent successfully:', info.messageId);
     return true;
   } catch (error) {
     console.error('Error sending verification email:', error);
+    console.error('Error details:', error.message);
     return false;
   }
 };
