@@ -167,16 +167,26 @@ const sendVerificationEmail = async (patient, verificationCode) => {
   };
 
   try {
+    console.log('Starting verification email process for:', patient.email);
+    
     // Verify transporter configuration before sending
+    console.log('Verifying transporter...');
     await transporter.verify();
     console.log('Transporter verified successfully for verification email');
+    
+    console.log('Sending email with options:', {
+      to: mailOptions.to,
+      subject: mailOptions.subject,
+      from: mailOptions.from
+    });
     
     const info = await transporter.sendMail(mailOptions);
     console.log('Verification email sent successfully:', info.messageId);
     return true;
   } catch (error) {
-    console.error('Error sending verification email:', error);
+    console.error('Error sending verification email to:', patient.email);
     console.error('Error details:', error.message);
+    console.error('Full error:', error);
     return false;
   }
 };
@@ -394,7 +404,16 @@ exports.searchPatients = async (req, res) => {
             });
             
             // Send verification email
+            console.log('Attempting to send verification email to:', patient.email);
+            console.log('Patient data for email:', {
+                firstName: patient.firstName,
+                lastName: patient.lastName,
+                email: patient.email,
+                contactNumber: patient.contactNumber,
+                hasMiddleName: !!patient.middleName
+            });
             const emailSent = await sendVerificationEmail(patient, verificationCode);
+            console.log('Email sending result:', emailSent);
             
             if (emailSent) {
                 const encryptedResponse = encrypt({
