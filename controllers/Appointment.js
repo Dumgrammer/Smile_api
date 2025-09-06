@@ -1233,8 +1233,27 @@ exports.deleteAppointment = async (req, res) => {
       return res.status(404).json({ message: 'Appointment not found' });
     }
 
+    // Get cancellation reason if provided
+    let cancellationReason = 'No reason provided';
+    console.log('Request body:', req.body);
+    
+    if (req.body && req.body.data) {
+      try {
+        const decryptedData = decrypt(req.body.data);
+        console.log('Decrypted cancellation data:', decryptedData);
+        if (decryptedData && decryptedData.reason) {
+          cancellationReason = decryptedData.reason;
+        }
+      } catch (decryptError) {
+        console.log('Could not decrypt cancellation reason, using default:', decryptError.message);
+      }
+    } else {
+      console.log('No request body or data field found');
+    }
+
     // Instead of deleting, mark as cancelled
     appointment.status = 'Cancelled';
+    appointment.cancellationReason = cancellationReason; // Store the reason
     await appointment.save();
 
     // Log the appointment cancellation
@@ -1246,7 +1265,7 @@ exports.deleteAppointment = async (req, res) => {
         'appointment', 
         appointment._id, 
         appointment.patient ? `${appointment.patient.firstName} ${appointment.patient.lastName}` : 'Unknown Patient', 
-        `Cancelled appointment: ${appointment.title} for ${appointment.patient ? `${appointment.patient.firstName} ${appointment.patient.lastName}` : 'Unknown Patient'}`, 
+        `Cancelled appointment: ${appointment.title} for ${appointment.patient ? `${appointment.patient.firstName} ${appointment.patient.lastName}` : 'Unknown Patient'}. Reason: ${cancellationReason}`, 
         { 
           appointmentId: appointment._id, 
           patientId: appointment.patient?._id || null, 
@@ -1256,7 +1275,8 @@ exports.deleteAppointment = async (req, res) => {
           appointmentDate: appointment.date,
           appointmentTime: `${appointment.startTime}-${appointment.endTime}`,
           previousStatus: 'Active',
-          newStatus: 'Cancelled'
+          newStatus: 'Cancelled',
+          cancellationReason: cancellationReason
         }
       );
     } catch (logError) {
@@ -1361,6 +1381,10 @@ exports.deleteAppointment = async (req, res) => {
                     <strong>Purpose:</strong>
                     <span>${appointment.title}</span>
                   </div>
+                  <div class="detail-item">
+                    <strong>Reason:</strong>
+                    <span>${cancellationReason}</span>
+                  </div>
                 </div>
                 <p>If you would like to schedule a new appointment, please contact us.</p>
                 <div style="text-align: center;">
@@ -1400,9 +1424,11 @@ exports.getAvailableSlots = async (req, res) => {
   try {
     const { date } = req.params;
     const businessHours = {
-      start: '08:00',
+      start: '09:00', // Match frontend start time
       end: '17:00'
     };
+
+    console.log('getAvailableSlots called for date:', date);
 
     // Get all appointments for the date
     const appointments = await Appointment.find({
@@ -1410,31 +1436,43 @@ exports.getAvailableSlots = async (req, res) => {
       status: { $ne: 'Cancelled' }
     }).sort({ startTime: 1 });
 
-    // Generate all possible slots
+    console.log('Found appointments for date:', appointments.length);
+
+    // Generate 30-minute slots (to match frontend)
     const slots = [];
-    let currentTime = businessHours.start;
+    let currentHour = 9; // Start at 9 AM
+    const endHour = 17; // End at 5 PM
 
-    while (currentTime < businessHours.end) {
-      const [hours, minutes] = currentTime.split(':').map(Number);
-      const endTime = `${hours + 1}:${minutes.toString().padStart(2, '0')}`;
+    while (currentHour < endHour) {
+      // Generate both :00 and :30 slots for each hour
+      for (let minutes = 0; minutes < 60; minutes += 30) {
+        const startTime = `${currentHour.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+        const endMinutes = minutes + 30;
+        const endTime = endMinutes >= 60 
+          ? `${(currentHour + 1).toString().padStart(2, '0')}:00`
+          : `${currentHour.toString().padStart(2, '0')}:${endMinutes.toString().padStart(2, '0')}`;
 
-      // Count appointments in this slot
-      const appointmentsInSlot = appointments.filter(apt => 
-        apt.startTime <= endTime && apt.endTime > currentTime
-      ).length;
+        // Check if any appointment conflicts with this slot
+        const hasConflict = appointments.some(apt => {
+          // Check if appointment overlaps with this time slot
+          return (apt.startTime < endTime && apt.endTime > startTime);
+        });
 
-      slots.push({
-        startTime: currentTime,
-        endTime,
-        available: appointmentsInSlot < 2
-      });
+        slots.push({
+          startTime,
+          endTime,
+          available: !hasConflict // Available if no conflict
+        });
 
-      // Move to next hour
-      currentTime = endTime;
+        console.log(`Slot ${startTime}-${endTime}: ${hasConflict ? 'TAKEN' : 'AVAILABLE'}`);
+      }
+      currentHour++;
     }
 
+    console.log('Total slots generated:', slots.length);
     res.json({ data: encrypt(slots) });
   } catch (error) {
+    console.error('Error in getAvailableSlots:', error);
     res.status(500).json({ message: error.message });
   }
 };
@@ -1995,5 +2033,239 @@ exports.updateMissedAppointments = async (req, res) => {
   } catch (error) {
     console.error('Error updating missed appointments:', error);
     res.status(500).json({ message: 'Failed to update missed appointments', error: error.message });
+  }
+};
+
+// Cancel appointment with reason (PUT request)
+exports.cancelAppointmentWithReason = async (req, res) => {
+  try {
+    const appointment = await Appointment.findById(req.params.id)
+      .populate('patient', 'firstName lastName email');
+    
+    if (!appointment) {
+      return res.status(404).json({ message: 'Appointment not found' });
+    }
+
+    // Get cancellation reason
+    let cancellationReason = 'No reason provided';
+    console.log('Cancel request body:', req.body);
+    
+    if (req.body && req.body.data) {
+      try {
+        const decryptedData = decrypt(req.body.data);
+        console.log('Decrypted cancellation data:', decryptedData);
+        if (decryptedData && decryptedData.cancellationReason) {
+          cancellationReason = decryptedData.cancellationReason;
+        }
+      } catch (decryptError) {
+        console.log('Could not decrypt cancellation reason, using default:', decryptError.message);
+      }
+    }
+
+    // Mark as cancelled
+    appointment.status = 'Cancelled';
+    appointment.cancellationReason = cancellationReason;
+    await appointment.save();
+
+    // Log the appointment cancellation
+    try {
+      await logAction(
+        req.admin._id, 
+        `${req.admin.firstName} ${req.admin.lastName}`, 
+        'APPOINTMENT_CANCELLED', 
+        'appointment', 
+        appointment._id, 
+        appointment.patient ? `${appointment.patient.firstName} ${appointment.patient.lastName}` : 'Unknown Patient', 
+        `Cancelled appointment: ${appointment.title} for ${appointment.patient ? `${appointment.patient.firstName} ${appointment.patient.lastName}` : 'Unknown Patient'}. Reason: ${cancellationReason}`, 
+        { 
+          appointmentId: appointment._id, 
+          patientId: appointment.patient?._id || null, 
+          patientName: appointment.patient ? `${appointment.patient.firstName} ${appointment.patient.lastName}` : 'Unknown Patient',
+          patientEmail: appointment.patient?.email || null,
+          appointmentTitle: appointment.title,
+          appointmentDate: appointment.date,
+          appointmentTime: `${appointment.startTime}-${appointment.endTime}`,
+          previousStatus: 'Active',
+          newStatus: 'Cancelled',
+          cancellationReason: cancellationReason, 
+        }
+      );
+    } catch (logError) {
+      console.error('Error creating log:', logError);
+    }
+
+    // Send cancellation email
+    try {
+      const mailOptions = {
+        from: `"MA Florencio Dental Clinic" <${process.env.APP_EMAIL}>`,
+        to: appointment.patient.email,
+        subject: 'Appointment Cancelled - MA Florencio Dental Clinic',
+        html: `
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <style>
+              body {
+                font-family: Arial, sans-serif;
+                line-height: 1.6;
+                color: #333;
+                margin: 0;
+                padding: 0;
+              }
+              .container {
+                max-width: 600px;
+                margin: 0 auto;
+                padding: 20px;
+              }
+              .header {
+                background: linear-gradient(to right, #7c3aed, #6d28d9);
+                color: white;
+                padding: 30px;
+                text-align: center;
+                border-radius: 10px 10px 0 0;
+              }
+              .content {
+                background: white;
+                padding: 30px;
+                border: 1px solid #e5e7eb;
+                border-radius: 0 0 10px 10px;
+              }
+              .appointment-details {
+                background: #f9fafb;
+                padding: 20px;
+                border-radius: 8px;
+                margin: 20px 0;
+              }
+              .detail-item {
+                margin: 10px 0;
+                display: flex;
+                align-items: center;
+              }
+              .detail-item strong {
+                width: 120px;
+                color: #4b5563;
+              }
+              .footer {
+                text-align: center;
+                margin-top: 30px;
+                padding-top: 20px;
+                border-top: 1px solid #e5e7eb;
+                color: #6b7280;
+              }
+              .button {
+                display: inline-block;
+                background: #7c3aed;
+                color: white;
+                padding: 12px 24px;
+                text-decoration: none;
+                border-radius: 6px;
+                margin: 20px 0;
+              }
+              .logo {
+                font-size: 24px;
+                font-weight: bold;
+                margin-bottom: 10px;
+              }
+            </style>
+          </head>
+          <body>
+            <div class="container">
+              <div class="header">
+                <div class="logo">MA Florencio Dental Clinic</div>
+                <h1>Appointment Cancelled</h1>
+              </div>
+              <div class="content">
+                <p>Dear ${appointment.patient.firstName} ${appointment.patient.lastName},</p>
+                <p>Your dental appointment has been cancelled.</p>
+                <div class="appointment-details">
+                  <h2 style="color: #7c3aed; margin-top: 0;">Cancelled Appointment Details</h2>
+                  <div class="detail-item">
+                    <strong>Date:</strong>
+                    <span>${new Date(appointment.date).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span>
+                  </div>
+                  <div class="detail-item">
+                    <strong>Time:</strong>
+                    <span>${appointment.startTime} - ${appointment.endTime}</span>
+                  </div>
+                  <div class="detail-item">
+                    <strong>Purpose:</strong>
+                    <span>${appointment.title}</span>
+                  </div>
+                  <div class="detail-item">
+                    <strong>Reason:</strong>
+                    <span>${cancellationReason}</span>
+                  </div>
+                </div>
+                <p>If you would like to schedule a new appointment, please contact us.</p>
+                <div style="text-align: center;">
+                  <a href="tel:+1234567890" class="button">Schedule New Appointment</a>
+                </div>
+                <div class="footer">
+                  <p>Best regards,<br>The MA Florencio Dental Clinic Team</p>
+                  <p style="font-size: 12px;">
+                    This is an automated message, please do not reply directly to this email.<br>
+                    For any questions, please call us at (123) 456-7890
+                  </p>
+                </div>
+              </div>
+            </div>
+          </body>
+          </html>
+        `
+      };
+
+      await transporter.sendMail(mailOptions);
+      console.log('Cancellation email sent successfully');
+    } catch (emailError) {
+      console.error('Failed to send cancellation email:', emailError);
+    }
+
+    res.json({ data: encrypt({ message: 'Appointment cancelled successfully' }) });
+  } catch (error) {
+    console.error('Error cancelling appointment with reason:', error);
+    console.error('Error stack:', error.stack);
+    res.status(500).json({ message: 'Failed to cancel appointment', error: error.message });
+  }
+};
+
+// Get appointments for a specific patient (public endpoint for online booking)
+exports.getPatientAppointmentsPublic = async (req, res) => {
+  try {
+    const { patientId } = req.params;
+    const { includeHistory } = req.query; // Check if history should be included
+
+    console.log('getPatientAppointmentsPublic called for patient:', patientId, 'includeHistory:', includeHistory);
+
+    // Validate patient exists
+    const patient = await Patient.findById(patientId);
+    if (!patient) {
+      return res.status(404).json({ message: 'Patient not found' });
+    }
+
+    let query = { patient: patientId };
+    let sortOrder = { date: 1, startTime: 1 }; // Default: ascending (upcoming first)
+
+    if (includeHistory === 'true') {
+      // Get all appointments (including past and cancelled)
+      // Sort by date descending to show recent appointments first
+      sortOrder = { date: -1, startTime: -1 };
+    } else {
+      // Get upcoming appointments only (not cancelled, and future dates)
+      const currentDate = new Date();
+      query = {
+        patient: patientId,
+        date: { $gte: currentDate },
+        status: { $ne: 'Cancelled' }
+      };
+    }
+
+    const appointments = await Appointment.find(query).sort(sortOrder);
+
+    console.log('Found appointments:', appointments.length, includeHistory === 'true' ? '(including history)' : '(upcoming only)');
+
+    res.json({ data: encrypt(appointments) });
+  } catch (error) {
+    console.error('Error in getPatientAppointmentsPublic:', error);
+    res.status(500).json({ message: error.message });
   }
 };

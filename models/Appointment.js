@@ -42,6 +42,11 @@ const appointmentSchema = new mongoose.Schema({
     required: true,
     trim: true
   },
+  cancellationReason: {
+    type: String,
+    trim: true,
+    default: null
+  },
   createdAt: {
     type: Date,
     default: Date.now

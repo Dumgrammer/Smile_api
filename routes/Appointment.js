@@ -33,10 +33,16 @@ router.get('/:id', protect, appointmentController.getAppointmentById);
 // Update appointment
 router.put('/:id', protect, appointmentController.updateAppointment);
 
+// Cancel appointment with reason
+router.put('/:id/cancel', protect, appointmentController.cancelAppointmentWithReason);
+
 // Delete (cancel) appointment
 router.delete('/:id', protect, appointmentController.deleteAppointment);
 
 // Get appointments for a specific patient
 router.get('/patient/:patientId', protect, appointmentController.getPatientAppointments);
+
+// Get appointments for a specific patient (public endpoint for online booking)
+router.get('/patient/:patientId/public', appointmentController.getPatientAppointmentsPublic);
 
 module.exports = router;
