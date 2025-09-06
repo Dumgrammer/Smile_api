@@ -24,7 +24,13 @@ router.put('/missed/update', protect, appointmentController.updateMissedAppointm
 // Get available time slots for a specific date
 router.get('/slots/:date', appointmentController.getAvailableSlots);
 
-// Reschedule appointment
+// Cancel appointment with reason (MUST come before /:id routes)
+router.put('/:id/cancel', protect, (req, res, next) => {
+  console.log('Cancel route hit with ID:', req.params.id);
+  next();
+}, appointmentController.cancelAppointmentWithReason);
+
+// Reschedule appointment (MUST come before /:id routes)
 router.put('/:id/reschedule', protect, appointmentController.rescheduleAppointment);
 
 // Get appointment by ID
@@ -32,9 +38,6 @@ router.get('/:id', protect, appointmentController.getAppointmentById);
 
 // Update appointment
 router.put('/:id', protect, appointmentController.updateAppointment);
-
-// Cancel appointment with reason
-router.put('/:id/cancel', protect, appointmentController.cancelAppointmentWithReason);
 
 // Delete (cancel) appointment
 router.delete('/:id', protect, appointmentController.deleteAppointment);

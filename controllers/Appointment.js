@@ -2038,6 +2038,9 @@ exports.updateMissedAppointments = async (req, res) => {
 
 // Cancel appointment with reason (PUT request)
 exports.cancelAppointmentWithReason = async (req, res) => {
+  console.log('cancelAppointmentWithReason called with ID:', req.params.id);
+  console.log('Request body:', req.body);
+  
   try {
     const appointment = await Appointment.findById(req.params.id)
       .populate('patient', 'firstName lastName email');
