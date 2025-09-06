@@ -2250,13 +2250,19 @@ exports.getPatientAppointmentsPublic = async (req, res) => {
       // Sort by date descending to show recent appointments first
       sortOrder = { date: -1, startTime: -1 };
     } else {
-      // Get upcoming appointments only (not cancelled, and future dates)
+      // Get upcoming appointments only (not cancelled, and future or today's dates)
       const currentDate = new Date();
+      const currentDateString = currentDate.toISOString().split('T')[0]; // YYYY-MM-DD format
+      
+      console.log('Current date for filtering:', currentDateString);
+      
       query = {
         patient: patientId,
-        date: { $gte: currentDate },
+        date: { $gte: currentDateString }, // Use string comparison for dates
         status: { $ne: 'Cancelled' }
       };
+      
+      console.log('Query for upcoming appointments:', query);
     }
 
     const appointments = await Appointment.find(query).sort(sortOrder);
