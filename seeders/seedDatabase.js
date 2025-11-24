@@ -101,117 +101,89 @@ const generatePhone = () => {
   return `09${Math.floor(Math.random() * 900000000) + 100000000}`;
 };
 
-// Seed Patients
-const seedPatients = async () => {
-  console.log('Seeding patients...');
-  const patients = [];
-
-  for (let i = 0; i < 25; i++) {
-    const firstName = firstNames[Math.floor(Math.random() * firstNames.length)];
-    const lastName = lastNames[Math.floor(Math.random() * lastNames.length)];
-    const middleName = Math.random() > 0.3 ? middleNames[Math.floor(Math.random() * middleNames.length)] : '';
-    
-    const birthDate = new Date();
-    birthDate.setFullYear(birthDate.getFullYear() - (18 + Math.floor(Math.random() * 50))); // Age 18-68
-    
-    const patient = new Patient({
-      firstName,
-      middleName,
-      lastName,
-      birthDate,
-      age: new Date().getFullYear() - birthDate.getFullYear(),
-      gender: Math.random() > 0.5 ? 'Male' : 'Female',
-      contactNumber: generatePhone(),
-      email: generateEmail(firstName, lastName),
-      address: {
-        street: `${Math.floor(Math.random() * 999) + 1} ${streets[Math.floor(Math.random() * streets.length)]}`,
-        city: cities[Math.floor(Math.random() * cities.length)],
-        province: 'Zambales',
-        postalCode: `${2200 + Math.floor(Math.random() * 50)}`
-      },
-      emergencyContact: {
-        name: `${firstNames[Math.floor(Math.random() * firstNames.length)]} ${lastNames[Math.floor(Math.random() * lastNames.length)]}`,
-        relationship: Math.random() > 0.5 ? 'Parent' : 'Spouse',
-        contactNumber: generatePhone()
-      },
-      allergies: Math.random() > 0.7 ? 'Penicillin' : Math.random() > 0.5 ? 'None' : 'Latex',
-      registrationDate: getRandomDate(180, -30),
-      lastVisit: getRandomDate(30, -1),
-      isActive: Math.random() > 0.1 // 90% active patients
-    });
-
-    // Add some cases for some patients
-    if (Math.random() > 0.6) {
-      patient.cases.push({
-        title: appointmentTitles[Math.floor(Math.random() * appointmentTitles.length)],
-        description: 'Dental treatment case',
-        treatmentPlan: 'Standard dental care protocol',
-        startDate: getRandomDate(60, -10),
-        endDate: Math.random() > 0.7 ? getRandomDate(10, 30) : undefined,
-        status: Math.random() > 0.3 ? 'Active' : 'Completed',
-        notes: []
-      });
-    }
-
-    patients.push(patient);
-  }
-
-  await Patient.insertMany(patients);
-  console.log(`✅ Created ${patients.length} patients`);
+// Get existing active patients
+const getActivePatients = async () => {
+  console.log('📋 Fetching existing active patients...');
+  const patients = await Patient.find({ isActive: true });
+  console.log(`✅ Found ${patients.length} active patients`);
   return patients;
 };
 
-// Seed Appointments
+// Seed Appointments - 3 months worth, recurring monthly for each active patient
 const seedAppointments = async (patients) => {
-  console.log('Seeding appointments...');
+  console.log('📅 Seeding appointments (3 months, monthly recurring)...');
   const appointments = [];
-  const statuses = ['Scheduled', 'Finished', 'Rescheduled', 'Cancelled', 'Pending'];
-  const statusWeights = [0.35, 0.4, 0.1, 0.1, 0.05]; // Higher chance for Finished to show treated patients
+  const today = new Date();
+  today.setHours(0, 0, 0, 0); // Start of today
 
-  // Create 80-120 appointments
-  const appointmentCount = 80 + Math.floor(Math.random() * 41);
-
-  for (let i = 0; i < appointmentCount; i++) {
-    const patient = patients[Math.floor(Math.random() * patients.length)];
-    const appointmentDate = getRandomDate(90, 60);
-    const startTime = getRandomTime();
-    const startHour = parseInt(startTime.split(':')[0]);
-    const startMinute = parseInt(startTime.split(':')[1]);
-    
-    // End time is 30-60 minutes later
-    const duration = 30 + Math.floor(Math.random() * 31); // 30-60 minutes
-    const endHour = Math.floor((startHour * 60 + startMinute + duration) / 60);
-    const endMinute = (startHour * 60 + startMinute + duration) % 60;
-    const endTime = `${endHour.toString().padStart(2, '0')}:${endMinute.toString().padStart(2, '0')}`;
-
-    // Weighted random status selection
-    let randomValue = Math.random();
-    let status = 'Scheduled';
-    let cumulative = 0;
-    for (let j = 0; j < statusWeights.length; j++) {
-      cumulative += statusWeights[j];
-      if (randomValue <= cumulative) {
-        status = statuses[j];
-        break;
-      }
-    }
-
-    const appointment = new Appointment({
-      patient: patient._id,
-      date: appointmentDate,
-      startTime,
-      endTime,
-      status,
-      title: appointmentTitles[Math.floor(Math.random() * appointmentTitles.length)],
-      createdAt: getRandomDate(120, -1),
-      updatedAt: getRandomDate(30, -1)
-    });
-
-    appointments.push(appointment);
+  if (patients.length === 0) {
+    console.log('⚠️  No active patients found. Skipping appointment seeding.');
+    return [];
   }
 
-  await Appointment.insertMany(appointments);
-  console.log(`✅ Created ${appointments.length} appointments`);
+  // For each active patient, create appointments for the next 3 months (monthly intervals)
+  for (const patient of patients) {
+    // Start from today or a few days in the future
+    const startDate = new Date(today);
+    startDate.setDate(startDate.getDate() + Math.floor(Math.random() * 7)); // Start within next 7 days
+    
+    // Create 3-4 appointments per patient (one per month for 3 months)
+    for (let monthOffset = 0; monthOffset < 3; monthOffset++) {
+      const appointmentDate = new Date(startDate);
+      appointmentDate.setMonth(appointmentDate.getMonth() + monthOffset);
+      
+      // Ensure appointment is within 3 months from today
+      const maxDate = new Date(today);
+      maxDate.setMonth(maxDate.getMonth() + 3);
+      
+      if (appointmentDate > maxDate) {
+        break; // Skip if beyond 3 months
+      }
+
+      // Generate random time (9 AM to 5 PM)
+      const startTime = getRandomTime();
+      const startHour = parseInt(startTime.split(':')[0]);
+      const startMinute = parseInt(startTime.split(':')[1]);
+      
+      // End time is 30-60 minutes later
+      const duration = 30 + Math.floor(Math.random() * 31); // 30-60 minutes
+      const endHour = Math.floor((startHour * 60 + startMinute + duration) / 60);
+      const endMinute = (startHour * 60 + startMinute + duration) % 60;
+      const endTime = `${endHour.toString().padStart(2, '0')}:${endMinute.toString().padStart(2, '0')}`;
+
+      // Determine status based on date
+      let status = 'Scheduled';
+      if (appointmentDate < today) {
+        // Past appointments are mostly Finished
+        status = Math.random() > 0.2 ? 'Finished' : 'Cancelled';
+      } else if (appointmentDate.getTime() === today.getTime()) {
+        // Today's appointments can be Scheduled or Pending
+        status = Math.random() > 0.7 ? 'Pending' : 'Scheduled';
+      }
+      // Future appointments remain Scheduled
+
+      const appointment = new Appointment({
+        patient: patient._id,
+        date: appointmentDate,
+        startTime,
+        endTime,
+        status,
+        title: appointmentTitles[Math.floor(Math.random() * appointmentTitles.length)],
+        createdAt: appointmentDate < today ? new Date(appointmentDate.getTime() - 7 * 24 * 60 * 60 * 1000) : today,
+        updatedAt: appointmentDate < today ? appointmentDate : today
+      });
+
+      appointments.push(appointment);
+    }
+  }
+
+  if (appointments.length > 0) {
+    await Appointment.insertMany(appointments);
+    console.log(`✅ Created ${appointments.length} appointments for ${patients.length} active patients`);
+  } else {
+    console.log('⚠️  No appointments created.');
+  }
+  
   return appointments;
 };
 
@@ -331,21 +303,11 @@ const seedNotes = async (patients, appointments) => {
   return notes;
 };
 
-// Clear existing data
-const clearDatabase = async () => {
-  console.log('🧹 Clearing existing seed data...');
-  await Patient.deleteMany({});
+// Clear existing appointment data (keep patients)
+const clearAppointments = async () => {
+  console.log('🧹 Clearing existing appointments...');
   await Appointment.deleteMany({});
-  await Inquiry.deleteMany({});
-  
-  // Only clear Notes if the model exists
-  try {
-    await Notes.deleteMany({});
-  } catch (error) {
-    console.log('Notes model not found, skipping notes cleanup');
-  }
-  
-  console.log('✅ Database cleared');
+  console.log('✅ Appointments cleared');
 };
 
 // Main seeding function
@@ -353,34 +315,32 @@ const seedDatabase = async () => {
   try {
     await connectDB();
     
-    console.log('🌱 Starting database seeding...\n');
+    console.log('🌱 Starting appointment seeding for existing active patients...\n');
     
-    // Clear existing data
-    await clearDatabase();
+    // Clear existing appointments
+    await clearAppointments();
     
-    // Seed data
-    const patients = await seedPatients();
-    const appointments = await seedAppointments(patients);
-    const inquiries = await seedInquiries();
+    // Get existing active patients
+    const patients = await getActivePatients();
     
-    // Try to seed notes if Notes model exists
-    try {
-      await seedNotes(patients, appointments);
-    } catch (error) {
-      console.log('⚠️  Notes model not found, skipping notes seeding');
+    if (patients.length === 0) {
+      console.log('⚠️  No active patients found in database. Please add active patients first.');
+      return;
     }
     
-    console.log('\n🎉 Database seeding completed successfully!');
+    // Seed appointments for active patients (3 months, monthly recurring)
+    const appointments = await seedAppointments(patients);
+    
+    console.log('\n🎉 Appointment seeding completed successfully!');
     console.log(`
 📊 Summary:
-   • ${patients.length} Patients created
-   • ${appointments.length} Appointments created  
-   • ${inquiries.length} Inquiries created
-   • Ready for dashboard testing!
+   • ${patients.length} Active patients found
+   • ${appointments.length} Appointments created (3 months, monthly recurring)
+   • Each patient has appointments scheduled 1 month apart
     `);
     
   } catch (error) {
-    console.error('❌ Error seeding database:', error);
+    console.error('❌ Error seeding appointments:', error);
   } finally {
     await mongoose.disconnect();
     console.log('📝 Database connection closed');

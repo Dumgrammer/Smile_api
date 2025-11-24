@@ -33,4 +33,9 @@ router.patch('/:patientId/cases/:caseId', protect, PatientController.updateCase)
 // Note routes
 router.post('/:patientId/cases/:caseId/notes', protect, PatientController.addNoteToCase);
 
+// Image/X-ray upload routes
+const upload = require('../middleware/upload');
+router.post('/:patientId/cases/:caseId/images', protect, upload.array('images', 10), PatientController.uploadCaseImages);
+router.delete('/:patientId/cases/:caseId/images/:imageId', protect, PatientController.deleteCaseImage);
+
 module.exports = router;

@@ -540,6 +540,50 @@ exports.updatePatient = async (req, res) => {
         // Decrypt the incoming data
         const updates = decrypt(req.body.data);
         
+        // Get the existing patient to preserve images in cases
+        const existingPatient = await Patient.findById(id);
+        if (!existingPatient) {
+            return res.status(404).json({
+                message: 'Patient not found'
+            });
+        }
+        
+        // Remove empty strings and null values to avoid overwriting existing data
+        Object.keys(updates).forEach(key => {
+            if (updates[key] === "" || updates[key] === null || updates[key] === undefined) {
+                delete updates[key];
+            }
+        });
+        
+        // If cases are being updated, preserve existing images and other case data
+        if (updates.cases && Array.isArray(updates.cases)) {
+            updates.cases = updates.cases.map((updatedCase, index) => {
+                // Find the corresponding existing case by _id or index
+                let existingCase = null;
+                if (updatedCase._id) {
+                    existingCase = existingPatient.cases.id(updatedCase._id);
+                } else if (index < existingPatient.cases.length) {
+                    existingCase = existingPatient.cases[index];
+                }
+                
+                // If existing case found, preserve its images and other metadata
+                if (existingCase) {
+                    const preservedCase = {
+                        ...updatedCase,
+                        // Always preserve existing images - they should only be modified via image upload endpoints
+                        images: existingCase.images || [],
+                        // Preserve timestamps
+                        createdAt: existingCase.createdAt,
+                        updatedAt: new Date() // Update timestamp when case is modified
+                    };
+                    return preservedCase;
+                }
+                
+                // If no existing case (new case), return updated case as is
+                return updatedCase;
+            });
+        }
+        
         // Check if birthdate is being updated to recalculate age
         if (updates.birthDate) {
             const birthDateObj = new Date(updates.birthDate);
@@ -1275,6 +1319,188 @@ exports.restoreMultiplePatients = async (req, res) => {
         // Encrypt error response
         const encryptedError = encrypt({
             error: 'Failed to restore patients',
+            details: error.message
+        });
+        
+        res.status(500).json({
+            data: encryptedError
+        });
+    }
+};
+
+// Upload images/X-rays to a case
+exports.uploadCaseImages = async (req, res) => {
+    try {
+        const patientId = req.params.patientId;
+        const caseId = req.params.caseId;
+        
+        if (!req.files || req.files.length === 0) {
+            return res.status(400).json({
+                error: 'No files uploaded'
+            });
+        }
+        
+        const patient = await Patient.findById(patientId);
+        
+        if (!patient) {
+            return res.status(404).json({
+                error: 'Patient not found'
+            });
+        }
+        
+        const patientCase = patient.cases.id(caseId);
+        
+        if (!patientCase) {
+            return res.status(404).json({
+                error: 'Case not found'
+            });
+        }
+        
+        // Process uploaded files
+        const uploadedImages = req.files.map(file => ({
+            filename: file.filename,
+            originalName: file.originalname,
+            path: file.path,
+            mimeType: file.mimetype,
+            size: file.size,
+            uploadedAt: new Date(),
+            description: req.body.descriptions ? req.body.descriptions[req.files.indexOf(file)] : ''
+        }));
+        
+        // Add images to case
+        patientCase.images.push(...uploadedImages);
+        patient.lastVisit = new Date();
+        
+        const updatedPatient = await patient.save();
+        
+        // Log the action
+        await logAction(
+            req.admin._id,
+            `${req.admin.firstName} ${req.admin.lastName}`,
+            'CASE_IMAGES_UPLOADED',
+            'patient',
+            patient._id,
+            `${patient.firstName} ${patient.lastName}`,
+            `Uploaded ${uploadedImages.length} image(s) to case: ${patientCase.title}`,
+            {
+                patientId: patient._id,
+                caseId: caseId,
+                imagesCount: uploadedImages.length
+            }
+        );
+        
+        // Get the saved images with their IDs
+        const savedImages = updatedPatient.cases.id(caseId).images.slice(-uploadedImages.length);
+        
+        // Encrypt the entire response
+        const encryptedResponse = encrypt({
+            message: 'Images uploaded successfully',
+            images: savedImages.map(img => ({
+                _id: img._id,
+                filename: img.filename,
+                originalName: img.originalName,
+                path: img.path,
+                mimeType: img.mimeType,
+                size: img.size,
+                uploadedAt: img.uploadedAt,
+                description: img.description,
+                url: `/uploads/patients/${img.filename}`
+            }))
+        });
+        
+        res.status(201).json({
+            data: encryptedResponse
+        });
+    } catch (error) {
+        console.error(error);
+        
+        // Encrypt error response
+        const encryptedError = encrypt({
+            error: 'Failed to upload images',
+            details: error.message
+        });
+        
+        res.status(500).json({
+            data: encryptedError
+        });
+    }
+};
+
+// Delete an image from a case
+exports.deleteCaseImage = async (req, res) => {
+    try {
+        const patientId = req.params.patientId;
+        const caseId = req.params.caseId;
+        const imageId = req.params.imageId;
+        const fs = require('fs');
+        const path = require('path');
+        
+        const patient = await Patient.findById(patientId);
+        
+        if (!patient) {
+            return res.status(404).json({
+                error: 'Patient not found'
+            });
+        }
+        
+        const patientCase = patient.cases.id(caseId);
+        
+        if (!patientCase) {
+            return res.status(404).json({
+                error: 'Case not found'
+            });
+        }
+        
+        const image = patientCase.images.id(imageId);
+        
+        if (!image) {
+            return res.status(404).json({
+                error: 'Image not found'
+            });
+        }
+        
+        // Delete file from filesystem
+        const filePath = path.join(__dirname, '../uploads/patients', image.filename);
+        if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath);
+        }
+        
+        // Remove image from case
+        patientCase.images.pull(imageId);
+        patient.lastVisit = new Date();
+        
+        const updatedPatient = await patient.save();
+        
+        // Log the action
+        await logAction(
+            req.admin._id,
+            `${req.admin.firstName} ${req.admin.lastName}`,
+            'CASE_IMAGE_DELETED',
+            'patient',
+            patient._id,
+            `${patient.firstName} ${patient.lastName}`,
+            `Deleted image from case: ${patientCase.title}`,
+            {
+                patientId: patient._id,
+                caseId: caseId,
+                imageId: imageId
+            }
+        );
+        
+        // Encrypt the entire response
+        const encryptedResponse = encrypt({
+            message: 'Image deleted successfully'
+        });
+        
+        res.status(200).json({
+            data: encryptedResponse
+        });
+    } catch (error) {
+        console.error(error);
+        
+        // Encrypt error response
+        const encryptedError = encrypt({
+            error: 'Failed to delete image',
             details: error.message
         });
         

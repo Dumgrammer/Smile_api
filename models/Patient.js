@@ -41,7 +41,37 @@ const caseSchema = new mongoose.Schema({
     verificationCode: {
         type: String,
         required: false
-    }
+    },
+    images: [{
+        filename: {
+            type: String,
+            required: true
+        },
+        originalName: {
+            type: String,
+            required: true
+        },
+        path: {
+            type: String,
+            required: true
+        },
+        mimeType: {
+            type: String,
+            required: true
+        },
+        size: {
+            type: Number,
+            required: true
+        },
+        uploadedAt: {
+            type: Date,
+            default: Date.now
+        },
+        description: {
+            type: String,
+            required: false
+        }
+    }]
 }, { timestamps: true });
 
 // Main Patient schema

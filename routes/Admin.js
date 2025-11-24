@@ -5,7 +5,7 @@ const router = express.Router();
 const adminController = require('../controllers/Admin');
 const { protect, authorize } = require('../middleware/auth');
 const { loginLimiter, apiLimiter } = require('../middleware/rateLimit');
-const DashboardController = require('../controllers/Dashboard');
+const { getStats, getActivityTrend } = require('../controllers/Dashboard');
 
 // Public routes (rate limited)
 router.post('/login', loginLimiter, adminController.loginAdmin);
@@ -22,8 +22,8 @@ router.post('/logout', protect, adminController.logoutAdmin);
 router.post('/register', [protect, authorize('superadmin'), apiLimiter], adminController.registerAdmin);
 
 // Dashboard stats route
-router.get('/dashboard/stats', DashboardController.getStats);
+router.get('/dashboard/stats', getStats);
 // Dashboard activity trend route
-router.get('/dashboard/activity-trend', DashboardController.getActivityTrend);
+router.get('/dashboard/activity-trend', getActivityTrend);
 
 module.exports = router;

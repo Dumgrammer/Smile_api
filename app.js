@@ -37,6 +37,10 @@ const notesRoutes = require('./routes/Notes');
 const inquiryRoutes = require('./routes/Inquiry');
 const logRoutes = require('./routes/Logs');
 
+// Serve static files from uploads directory
+const path = require('path');
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
 app.use('/api/v1/admin', adminRoutes);
 app.use('/api/v1/patients', patientRoutes);
 app.use('/api/v1/appointments', appointmentRoutes);

@@ -18,6 +18,39 @@ const transporter = nodemailer.createTransport({
   }
 });
 
+// Helper function to generate Google Calendar link (mobile-friendly)
+const generateCalendarLink = (title, description, startDate, endDate, location = 'M&F Building National Road cor. Govic Highway, Brgy. Del Pilar, Castillejos, Philippines') => {
+  // Format dates for calendar links (YYYYMMDDTHHmmss format)
+  const formatCalendarDate = (date) => {
+    const d = new Date(date);
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    const hours = String(d.getHours()).padStart(2, '0');
+    const minutes = String(d.getMinutes()).padStart(2, '0');
+    const seconds = String(d.getSeconds()).padStart(2, '0');
+    return `${year}${month}${day}T${hours}${minutes}${seconds}`;
+  };
+
+  const start = formatCalendarDate(startDate);
+  const end = formatCalendarDate(endDate);
+  
+  // Encode parameters for URLs
+  const encode = (str) => encodeURIComponent(str);
+  
+  // Google Calendar link (works on mobile to open app if installed)
+  return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encode(title)}&dates=${start}/${end}&details=${encode(description)}&location=${encode(location)}`;
+};
+
+// Helper function to generate minimalistic calendar button HTML
+const generateCalendarButtonsHTML = (calendarLink) => {
+  return `
+    <div style="text-align: center; margin: 20px 0;">
+      <a href="${calendarLink}" target="_blank" style="display: inline-block; padding: 8px 16px; background: #4285f4; color: white; text-decoration: none; border-radius: 4px; font-size: 14px;">Add to Google Calendar</a>
+    </div>
+  `;
+};
+
 // Create a new appointment
 exports.createAppointment = async (req, res) => {
   try {
@@ -102,6 +135,21 @@ exports.createAppointment = async (req, res) => {
 
     // Send email notification with enhanced design
     try {
+      // Generate calendar links
+      const [startHours, startMinutes] = startTime.split(':').map(Number);
+      const [endHours, endMinutes] = endTime.split(':').map(Number);
+      const appointmentStartDate = new Date(appointmentDate);
+      appointmentStartDate.setHours(startHours, startMinutes, 0, 0);
+      const appointmentEndDate = new Date(appointmentDate);
+      appointmentEndDate.setHours(endHours, endMinutes, 0, 0);
+      
+      const calendarLink = generateCalendarLink(
+        title,
+        `Dental appointment: ${title}. Please arrive 10 minutes before your scheduled time.`,
+        appointmentStartDate,
+        appointmentEndDate
+      );
+
       const mailOptions = {
         from: `"MA Florencio Dental Clinic" <${process.env.APP_EMAIL}>`,
         to: patient.email,
@@ -172,7 +220,8 @@ exports.createAppointment = async (req, res) => {
                 padding: 12px 24px;
                 text-decoration: none;
                 border-radius: 6px;
-                margin: 20px 0;
+                margin: 5px;
+                font-size: 14px;
               }
               .logo {
                 font-size: 24px;
@@ -206,6 +255,8 @@ exports.createAppointment = async (req, res) => {
                     <span>${title}</span>
                   </div>
                 </div>
+
+                ${generateCalendarButtonsHTML(calendarLink)}
 
                 <div class="reminder">
                   <h3 style="color: #7c3aed; margin-top: 0;">Important Reminders If Applicable</h3>
@@ -311,6 +362,21 @@ exports.createPublicAppointment = async (req, res) => {
 
     // Send email notification with enhanced design
     try {
+      // Generate calendar links for pending appointment
+      const [startHours, startMinutes] = startTime.split(':').map(Number);
+      const [endHours, endMinutes] = endTime.split(':').map(Number);
+      const appointmentStartDate = new Date(date);
+      appointmentStartDate.setHours(startHours, startMinutes, 0, 0);
+      const appointmentEndDate = new Date(date);
+      appointmentEndDate.setHours(endHours, endMinutes, 0, 0);
+      
+      const calendarLink = generateCalendarLink(
+        title,
+        `Dental appointment request: ${title}. Status: Pending - You will receive confirmation within 24 hours.`,
+        appointmentStartDate,
+        appointmentEndDate
+      );
+
       const mailOptions = {
         from: `"MA Florencio Dental Clinic" <${process.env.APP_EMAIL}>`,
         to: patient.email,
@@ -429,6 +495,8 @@ exports.createPublicAppointment = async (req, res) => {
                     <span>${title}</span>
                   </div>
                 </div>
+
+                ${generateCalendarButtonsHTML(calendarLink)}
 
                 <div class="reminder">
                   <h3 style="color: #7c3aed; margin-top: 0;">What Happens Next?</h3>
@@ -721,6 +789,38 @@ exports.getAppointments = async (req, res) => {
   }
 };
 
+// Get appointments (public - for online booking to check availability)
+exports.getPublicAppointments = async (req, res) => {
+  try {
+    const { date, status } = req.query;
+    // Only return confirmed appointments (Scheduled, Finished, Rescheduled) - exclude Pending and Cancelled
+    let query = { 
+      status: { $in: ['Scheduled', 'Finished', 'Rescheduled'] } 
+    };
+
+    if (date) {
+      query.date = date;
+    }
+    if (status) {
+      // Only allow filtering by specific statuses for public endpoint
+      if (['Scheduled', 'Finished', 'Rescheduled'].includes(status)) {
+        query.status = status;
+      }
+    }
+
+    const appointments = await Appointment.find(query)
+      .populate('patient', 'firstName lastName middleName')
+      .select('date startTime endTime status title') // Only return necessary fields
+      .sort({ date: 1, startTime: 1 });
+
+    res.json({ 
+      data: encrypt(appointments)
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
 // Get archived (cancelled) appointments
 exports.getArchivedAppointments = async (req, res) => {
   try {
@@ -857,6 +957,21 @@ exports.updateAppointment = async (req, res) => {
     try {
       let subject = '';
       let html = '';
+
+      // Generate calendar links for the appointment
+      const [startHours, startMinutes] = appointment.startTime.split(':').map(Number);
+      const [endHours, endMinutes] = appointment.endTime.split(':').map(Number);
+      const appointmentStartDate = new Date(appointment.date);
+      appointmentStartDate.setHours(startHours, startMinutes, 0, 0);
+      const appointmentEndDate = new Date(appointment.date);
+      appointmentEndDate.setHours(endHours, endMinutes, 0, 0);
+      
+      const calendarLink = generateCalendarLink(
+        appointment.title,
+        `Dental appointment: ${appointment.title}. Please arrive 10 minutes before your scheduled time.`,
+        appointmentStartDate,
+        appointmentEndDate
+      );
 
       const emailStyles = `
         <style>
@@ -1016,21 +1131,22 @@ exports.updateAppointment = async (req, res) => {
               <div class="content">
                 <p>Dear ${appointment.patient.firstName} ${appointment.patient.lastName},</p>
                 <p>Your dental appointment has been approved and scheduled.</p>
-                <div class="appointment-details">
-                  <h2 style="color: #7c3aed; margin-top: 0;">Confirmed Appointment Details</h2>
-                  <div class="detail-item">
-                    <strong>Date:</strong>
-                    <span>${new Date(appointment.date).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span>
+                  <div class="appointment-details">
+                    <h2 style="color: #7c3aed; margin-top: 0;">Confirmed Appointment Details</h2>
+                    <div class="detail-item">
+                      <strong>Date:</strong>
+                      <span>${new Date(appointment.date).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span>
+                    </div>
+                    <div class="detail-item">
+                      <strong>Time:</strong>
+                      <span>${appointment.startTime} - ${appointment.endTime}</span>
+                    </div>
+                    <div class="detail-item">
+                      <strong>Purpose:</strong>
+                      <span>${appointment.title}</span>
+                    </div>
                   </div>
-                  <div class="detail-item">
-                    <strong>Time:</strong>
-                    <span>${appointment.startTime} - ${appointment.endTime}</span>
-                  </div>
-                  <div class="detail-item">
-                    <strong>Purpose:</strong>
-                    <span>${appointment.title}</span>
-                  </div>
-                </div>
+                  ${generateCalendarButtonsHTML(calendarLink)}
                 <div class="reminder">
                   <h3 style="color: #7c3aed; margin-top: 0;">Important Reminders</h3>
                   <ul style="margin: 0; padding-left: 20px;">
@@ -1083,6 +1199,7 @@ exports.updateAppointment = async (req, res) => {
                     <span>${appointment.title}</span>
                   </div>
                 </div>
+                ${generateCalendarButtonsHTML(calendarLink)}
                 <div class="reminder">
                   <h3 style="color: #7c3aed; margin-top: 0;">Important Reminders</h3>
                   <ul style="margin: 0; padding-left: 20px;">
@@ -1423,11 +1540,7 @@ exports.deleteAppointment = async (req, res) => {
 exports.getAvailableSlots = async (req, res) => {
   try {
     const { date } = req.params;
-    const businessHours = {
-      start: '09:00', // Match frontend start time
-      end: '17:00'
-    };
-
+    
     console.log('getAvailableSlots called for date:', date);
 
     // Get all appointments for the date
@@ -1437,25 +1550,41 @@ exports.getAvailableSlots = async (req, res) => {
     }).sort({ startTime: 1 });
 
     console.log('Found appointments for date:', appointments.length);
+    console.log('Appointments found:', appointments.map(apt => ({
+      startTime: apt.startTime,
+      endTime: apt.endTime,
+      title: apt.title
+    })));
 
-    // Generate 30-minute slots (to match frontend)
+    // Generate 30-minute slots from 9:00 AM to 4:30 PM (16:30)
     const slots = [];
-    let currentHour = 9; // Start at 9 AM
-    const endHour = 17; // End at 5 PM
-
-    while (currentHour < endHour) {
-      // Generate both :00 and :30 slots for each hour
+    
+    // Generate slots from 9:00 to 16:30 (4:30 PM)
+    for (let hour = 9; hour <= 16; hour++) {
       for (let minutes = 0; minutes < 60; minutes += 30) {
-        const startTime = `${currentHour.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+        // Skip the 16:30 slot since we want to end at 4:30 PM
+        if (hour === 16 && minutes === 30) break;
+        
+        const startTime = `${hour.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
         const endMinutes = minutes + 30;
         const endTime = endMinutes >= 60 
-          ? `${(currentHour + 1).toString().padStart(2, '0')}:00`
-          : `${currentHour.toString().padStart(2, '0')}:${endMinutes.toString().padStart(2, '0')}`;
+          ? `${(hour + 1).toString().padStart(2, '0')}:00`
+          : `${hour.toString().padStart(2, '0')}:${endMinutes.toString().padStart(2, '0')}`;
 
         // Check if any appointment conflicts with this slot
         const hasConflict = appointments.some(apt => {
+          // Ensure all times are in HH:MM format for comparison
+          const aptStart = apt.startTime.padStart(5, '0'); // Ensure HH:MM format
+          const aptEnd = apt.endTime.padStart(5, '0'); // Ensure HH:MM format
+          
           // Check if appointment overlaps with this time slot
-          return (apt.startTime < endTime && apt.endTime > startTime);
+          const conflict = aptStart < endTime && aptEnd > startTime;
+          
+          if (conflict) {
+            console.log(`CONFLICT: Slot ${startTime}-${endTime} conflicts with appointment ${aptStart}-${aptEnd} (${apt.title})`);
+          }
+          
+          return conflict;
         });
 
         slots.push({
@@ -1466,10 +1595,10 @@ exports.getAvailableSlots = async (req, res) => {
 
         console.log(`Slot ${startTime}-${endTime}: ${hasConflict ? 'TAKEN' : 'AVAILABLE'}`);
       }
-      currentHour++;
     }
 
     console.log('Total slots generated:', slots.length);
+    console.log('Final slots:', slots);
     res.json({ data: encrypt(slots) });
   } catch (error) {
     console.error('Error in getAvailableSlots:', error);
@@ -1599,6 +1728,21 @@ exports.rescheduleAppointment = async (req, res) => {
 
     // Send email based on status change
     try {
+      // Generate calendar links for rescheduled appointment
+      const [startHours, startMinutes] = startTime.split(':').map(Number);
+      const [endHours, endMinutes] = endTime.split(':').map(Number);
+      const appointmentStartDate = new Date(date);
+      appointmentStartDate.setHours(startHours, startMinutes, 0, 0);
+      const appointmentEndDate = new Date(date);
+      appointmentEndDate.setHours(endHours, endMinutes, 0, 0);
+      
+      const calendarLink = generateCalendarLink(
+        title || appointment.title,
+        `Dental appointment: ${title || appointment.title}. Please arrive 10 minutes before your scheduled time.`,
+        appointmentStartDate,
+        appointmentEndDate
+      );
+
       let emailSubject, emailTitle;
       if (appointment.status === 'Scheduled') {
         emailSubject = 'Appointment Approved - MA Florencio Dental Clinic';
@@ -1715,6 +1859,7 @@ exports.rescheduleAppointment = async (req, res) => {
                     <span>${title || appointment.title}</span>
                   </div>
                 </div>
+                ${generateCalendarButtonsHTML(calendarLink)}
                 <div class="reminder">
                   <h3 style="color: #7c3aed; margin-top: 0;">Important Reminders</h3>
                   <ul style="margin: 0; padding-left: 20px;">

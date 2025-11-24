@@ -12,6 +12,9 @@ router.post('/public', appointmentController.createPublicAppointment);
 // Get all appointments (with optional date and status filters)
 router.get('/', protect, appointmentController.getAppointments);
 
+// Get appointments (public - for online booking to check availability)
+router.get('/public', appointmentController.getPublicAppointments);
+
 // Get archived appointments (must come before /:id route)
 router.get('/archived', protect, appointmentController.getArchivedAppointments);
 
@@ -25,10 +28,7 @@ router.put('/missed/update', protect, appointmentController.updateMissedAppointm
 router.get('/slots/:date', appointmentController.getAvailableSlots);
 
 // Cancel appointment with reason (MUST come before /:id routes)
-router.put('/:id/cancel', protect, (req, res, next) => {
-  console.log('Cancel route hit with ID:', req.params.id);
-  next();
-}, appointmentController.cancelAppointmentWithReason);
+router.put('/:id/cancel', protect, appointmentController.cancelAppointmentWithReason);
 
 // Reschedule appointment (MUST come before /:id routes)
 router.put('/:id/reschedule', protect, appointmentController.rescheduleAppointment);
