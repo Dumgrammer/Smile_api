@@ -36,6 +36,7 @@ const appointmentRoutes = require('./routes/Appointment');
 const notesRoutes = require('./routes/Notes');
 const inquiryRoutes = require('./routes/Inquiry');
 const logRoutes = require('./routes/Logs');
+const metricsRoutes = require('./routes/Metrics');
 
 // Serve static files from uploads directory
 const path = require('path');
@@ -47,6 +48,7 @@ app.use('/api/v1/appointments', appointmentRoutes);
 app.use('/api/v1/notes', notesRoutes);
 app.use('/api/v1/inquiry', inquiryRoutes);
 app.use('/api/v1/logs', logRoutes);
+app.use('/api/v1/metrics', metricsRoutes);
 
 app.use((req, res, next) => {
     const error = new Error('Not Found');
