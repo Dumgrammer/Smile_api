@@ -17,6 +17,164 @@ const transporter = nodemailer.createTransport({
   }
 });
 
+// Send reply email to customer
+const sendReplyEmail = async (inquiry, replyMessage, repliedBy) => {
+  try {
+    const mailOptions = {
+      from: `"MA Florencio Dental Clinic" <${process.env.APP_EMAIL}>`,
+      to: inquiry.email,
+      replyTo: process.env.APP_EMAIL,
+      subject: `Re: ${inquiry.subject} - MA Florencio Dental Clinic`,
+      html: `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <style>
+            body {
+              font-family: Arial, sans-serif;
+              line-height: 1.6;
+              color: #333;
+              margin: 0;
+              padding: 0;
+            }
+            .container {
+              max-width: 600px;
+              margin: 0 auto;
+              padding: 20px;
+            }
+            .header {
+              background: linear-gradient(to right, #7c3aed, #6d28d9);
+              color: white;
+              padding: 30px;
+              text-align: center;
+              border-radius: 10px 10px 0 0;
+            }
+            .content {
+              background: white;
+              padding: 30px;
+              border: 1px solid #e5e7eb;
+              border-radius: 0 0 10px 10px;
+            }
+            .reply-box {
+              background: #f9fafb;
+              padding: 20px;
+              border-radius: 8px;
+              margin: 20px 0;
+              border-left: 4px solid #7c3aed;
+            }
+            .original-inquiry {
+              background: #f3f4f6;
+              padding: 15px;
+              border-radius: 8px;
+              margin: 20px 0;
+              border-left: 4px solid #9ca3af;
+            }
+            .detail-item {
+              margin: 10px 0;
+              display: flex;
+              align-items: flex-start;
+            }
+            .detail-item strong {
+              width: 120px;
+              color: #4b5563;
+              flex-shrink: 0;
+            }
+            .footer {
+              text-align: center;
+              margin-top: 30px;
+              padding-top: 20px;
+              border-top: 1px solid #e5e7eb;
+              color: #6b7280;
+            }
+            .button {
+              display: inline-block;
+              background: #7c3aed;
+              color: white;
+              padding: 12px 24px;
+              text-decoration: none;
+              border-radius: 6px;
+              margin: 20px 0;
+            }
+            .logo {
+              font-size: 24px;
+              font-weight: bold;
+              margin-bottom: 10px;
+            }
+            .reply-message {
+              white-space: pre-wrap;
+              word-wrap: break-word;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <div class="logo">MA Florencio Dental Clinic</div>
+              <h1>Response to Your Inquiry</h1>
+            </div>
+            <div class="content">
+              <p>Dear ${inquiry.fullName},</p>
+              <p>Thank you for contacting MA Florencio Dental Clinic. We have reviewed your inquiry and are pleased to provide you with the following response:</p>
+              
+              <div class="reply-box">
+                <h2 style="color: #7c3aed; margin-top: 0;">Our Response</h2>
+                <div class="reply-message">${replyMessage.replace(/\n/g, '<br>')}</div>
+                <p style="margin-top: 15px; font-size: 12px; color: #6b7280;">
+                  <strong>Replied by:</strong> ${repliedBy}
+                </p>
+              </div>
+
+              <div class="original-inquiry">
+                <h3 style="color: #4b5563; margin-top: 0; font-size: 14px;">Your Original Inquiry</h3>
+                <div class="detail-item">
+                  <strong>Subject:</strong>
+                  <span>${inquiry.subject}</span>
+                </div>
+                <div class="detail-item">
+                  <strong>Your Message:</strong>
+                  <span>${inquiry.message}</span>
+                </div>
+                <div class="detail-item">
+                  <strong>Date:</strong>
+                  <span>${inquiry.formattedCreatedAt || new Date(inquiry.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</span>
+                </div>
+              </div>
+
+              <p>If you have any further questions or need additional assistance, please don't hesitate to contact us. We're here to help!</p>
+
+              <div style="text-align: center;">
+                <a href="tel:+639949282037" class="button">Call Us: +63 994 928 2037</a>
+              </div>
+
+              <div class="footer">
+                <p>Best regards,<br>MA Florencio Dental Clinic Team</p>
+                <p style="font-size: 12px;">
+                  M&F Building National Road cor. Govic Highway<br>
+                  Brgy. Del Pilar, Castillejos, Philippines<br><br>
+                  Office Hours: Monday - Friday, 9:00 AM - 6:00 PM<br>
+                  Email: <a href="mailto:maflorenciodental@gmail.com" style="color: #7c3aed;">maflorenciodental@gmail.com</a>
+                </p>
+              </div>
+            </div>
+          </div>
+        </body>
+        </html>
+      `
+    };
+
+    // Verify transporter configuration
+    await transporter.verify();
+    
+    // Send email
+    const info = await transporter.sendMail(mailOptions);
+    console.log('Inquiry reply email sent successfully:', info.messageId);
+    return true;
+  } catch (error) {
+    console.error('Error sending inquiry reply email:', error);
+    return false;
+  }
+};
+
 // Send inquiry confirmation email
 const sendInquiryConfirmationEmail = async (inquiry) => {
   try {
@@ -166,7 +324,7 @@ const sendInquiryConfirmationEmail = async (inquiry) => {
               <p>Thank you for choosing MA Florencio Dental Clinic for your dental care needs!</p>
 
               <div style="text-align: center;">
-                <a href="tel:+1234567890" class="button">Call Us for Urgent Concerns</a>
+                <a href="tel:+639949282037" class="button">Call Us: +63 994 928 2037</a>
               </div>
 
               <div class="footer">
@@ -509,8 +667,9 @@ exports.replyToInquiry = async (req, res) => {
     inquiry.status = 'Replied';
     await inquiry.save();
 
-    // Send reply email (implementation would go here)
-    // const emailSent = await sendReplyEmail(inquiry, replyMessage);
+    // Send reply email
+    const repliedBy = `${req.admin.firstName} ${req.admin.lastName}`;
+    const emailSent = await sendReplyEmail(inquiry, replyMessage.trim(), repliedBy);
 
     // Log the action
     await logAction(
@@ -533,7 +692,8 @@ exports.replyToInquiry = async (req, res) => {
 
     const response = { 
       message: 'Reply sent successfully',
-      inquiry 
+      inquiry,
+      emailSent
     };
     
     res.status(200).json({ data: encrypt(response) });

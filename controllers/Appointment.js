@@ -372,7 +372,7 @@ exports.createPublicAppointment = async (req, res) => {
       
       const calendarLink = generateCalendarLink(
         title,
-        `Dental appointment request: ${title}. Status: Pending - You will receive confirmation within 24 hours.`,
+        `Dental appointment request: ${title}. Status: Pending - You will receive confirmation within 24 - 48 hours.`,
         appointmentStartDate,
         appointmentEndDate
       );
@@ -502,7 +502,7 @@ exports.createPublicAppointment = async (req, res) => {
                   <h3 style="color: #7c3aed; margin-top: 0;">What Happens Next?</h3>
                   <ul style="margin: 0; padding-left: 20px;">
                     <li>Our team will review your appointment request</li>
-                    <li>You will receive a confirmation email within 24 hours</li>
+                    <li>You will receive a confirmation email within 24 - 48 hours</li>
                     <li>If there are any conflicts, we will contact you to reschedule</li>
                     <li>Once confirmed, your appointment will be finalized</li>
                   </ul>
